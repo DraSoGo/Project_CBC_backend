@@ -7,6 +7,7 @@ from PIL import Image
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import os
 
 app = FastAPI()
 
@@ -19,10 +20,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# โหลดโมเดล YOLOv5 (ตรวจสอบว่าไฟล์อยู่ที่ถูกต้อง)
+# 📌 แก้ไขโมเดลให้โหลดจากไฟล์โดยตรง (ไม่ใช้ torch.hub)
 MODEL_PATH = "./models/CBC.pt"
-model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH, force_reload=True)
-model.conf = 0.4  # กำหนดค่า Confidence threshold
+
+if not os.path.exists(MODEL_PATH):
+    raise RuntimeError(f"Model file not found: {MODEL_PATH}")
+
+model = torch.load(MODEL_PATH, map_location=torch.device("cpu"))  # โหลดโมเดลจากไฟล์
+model.eval()  # ตั้งค่าให้โมเดลเป็นโหมดประเมินผล
 
 @app.get("/")
 def root():
