@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 torch
-torchvision
-pillow
 numpy
-opencv-python-headless
+opencv-python
+pillow
+pandas  # ✅ ต้องเพิ่ม pandas
