@@ -1,55 +1,53 @@
+import base64
 from fastapi import FastAPI, File, UploadFile
 import torch
 import io
 import cv2
 import numpy as np
 from PIL import Image
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 
 app = FastAPI()
 
-# อนุญาตให้ Frontend (Next.js) เชื่อมต่อ API
+# อนุญาตให้ Frontend เชื่อมต่อ API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # หรือกำหนดเป็น ["http://localhost:3000"]
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# โหลดโมเดล YOLOv5 (ตรวจสอบว่าไฟล์อยู่ที่ถูกต้อง)
+# โหลดโมเดล YOLOv5
 MODEL_PATH = "./models/CBC.pt"
 model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH, force_reload=True)
-model.conf = 0.4  # กำหนดค่า Confidence threshold
-
-@app.get("/")
-def root():
-    return {"message": "YOLOv5 API is running!"}
+model.conf = 0.4  
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert("RGB")
-        
-        # แปลงภาพเป็น numpy array
         img_array = np.array(image)
         results = model(img_array)
-
-        # Render ผลลัพธ์จาก YOLOv5
+        
+        # Render ภาพ
         results.render()
+        detected_classes = [model.names[int(cls)] for cls in results.xyxy[0][:, -1]]
 
-        # แปลงรูปกลับเป็น JPEG
-        for img in results.ims:  
-            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            _, img_encoded = cv2.imencode('.jpg', img_bgr)
-            return Response(content=img_encoded.tobytes(), media_type="image/jpeg")
+        # นับจำนวนแต่ละคลาส
+        cell_counts = {cls: detected_classes.count(cls) for cls in set(detected_classes)}
+
+        # แปลงภาพเป็น Base64
+        _, img_encoded = cv2.imencode('.jpg', results.ims[0])
+        img_base64 = base64.b64encode(img_encoded).decode('utf-8')
+
+        return JSONResponse(content={"cell_counts": cell_counts, "image": img_base64})
 
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# สำหรับรัน Local
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/")
+def root():
+    return {"message": "YOLOv5 API is running!"}
